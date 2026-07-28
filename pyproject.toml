@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "realtime-delivery-lakehouse"
+version = "0.1.0"
+description = "Plateforme de suivi de livraisons en temps réel (streaming lakehouse)"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+# Packages Python du projet (dossiers avec __init__.py)
+include = ["simulator*", "streaming*", "api*"]
+
+[tool.pytest.ini_options]
+# Ajoute la racine du projet au chemin d'import :
+# pytest trouvera alors le package 'simulator' sans installation.
+pythonpath = ["."]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
