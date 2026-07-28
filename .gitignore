@@ -216,3 +216,63 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Environnements
+.env
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Spark
+spark-checkpoints/
+spark-warehouse/
+metastore_db/
+derby.log
+*.crc
+
+# Terraform
+infra/.terraform/
+infra/**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+crash.log
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/profiles.yml
+
+# Power BI (fichiers temporaires)
+*.pbix.tmp
+~$*.pbix
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Données locales
+data/
+*.parquet
+*.csv
+!**/sample_*.csv
+
+# Secrets et certificats
+*.pem
+*.key
+secrets/
