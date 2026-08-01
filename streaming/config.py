@@ -39,7 +39,8 @@ if platform.system() == "Windows":
 
 from pyspark.sql import SparkSession
 
-
+# Répertoire de sortie du data lake (Parquet). Hors OneDrive en dev.
+LAKE_OUTPUT_DIR = os.getenv("LAKE_OUTPUT_DIR", r"C:\delivery-lake")
 # ------------------------------------------------------------
 # Paramètres lus depuis .env (avec valeurs par défaut dev local)
 # ------------------------------------------------------------
