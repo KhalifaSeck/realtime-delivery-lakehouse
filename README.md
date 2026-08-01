@@ -89,7 +89,7 @@ tests/          Tests unitaires (simulateur, streaming, API)
 ## Plan de construction
 
 - [x] **Brique 0** — Structure du repo, configuration de base
-- [ ] **Brique 1** — Simulateur Python + producteurs Kafka
+- [x] **Brique 1** — Simulateur Python + producteurs Kafka
 - [ ] **Brique 2** — Spark Structured Streaming : validation et nettoyage
 - [ ] **Brique 3** — Enrichissement (jointures), métriques, anomalies
 - [ ] **Brique 4** — Sinks Redis et ADLS Gen2
