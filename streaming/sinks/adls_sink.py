@@ -38,8 +38,8 @@ def write_to_lake(df: DataFrame, event_type: str, query_name: str):
     (delivery, orders, driver events aux étapes suivantes).
     """
     prepared = _prepare_for_lake(df, event_type)
-    output_path = f"{LAKE_OUTPUT_DIR}\\events"
-
+    #output_path = f"{LAKE_OUTPUT_DIR}\\events"
+    output_path = f"{LAKE_OUTPUT_DIR}\\events\\{event_type}"
     return (
         prepared.writeStream
         .format("parquet")
@@ -62,7 +62,7 @@ def write_enriched_to_lake(df: DataFrame, event_type: str, query_name: str):
     Chaque micro-batch est enrichi (DataFrame statique) puis écrit en
     Parquet partitionné, en mode append.
     """
-    output_path = f"{LAKE_OUTPUT_DIR}\\events"
+    output_path = f"{LAKE_OUTPUT_DIR}\\events\\{event_type}"
 
     def write_batch(batch_df, batch_id):
         if batch_df.isEmpty():

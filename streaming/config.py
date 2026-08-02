@@ -74,9 +74,11 @@ def get_spark(app_name: str = "DeliveryStreaming") -> SparkSession:
         .config("spark.sql.shuffle.partitions", "4")
         .config("spark.streaming.stopGracefullyOnShutdown", "true")
         .config("spark.sql.streaming.forceDeleteTempCheckpointLocation", "true")
+        .config("spark.driver.memory", "4g")
+        .config("spark.sql.streaming.metricsEnabled", "true")
+        .config("spark.scheduler.mode", "FAIR")
         .getOrCreate()
     )
-
 
 def checkpoint_path(name: str) -> str:
     """

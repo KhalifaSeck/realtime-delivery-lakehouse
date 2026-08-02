@@ -1,65 +1,85 @@
 """
 Point d'entrée du job Spark Structured Streaming.
 
-Pipeline GPS de bout en bout, avec DEUX sinks en parallèle :
+Traite les 4 topics en parallèle (DLQ temporairement suspendues) :
 
-    Kafka (gps_positions)
-      -> lecture + parsing (read_kafka)
-      -> validation (dead-letter écarté)
-      -> nettoyage (event_time, coordonnées)
-      -> [sink Redis]  état courant des véhicules (speed layer)
-      -> [sink Lake]   historique Parquet partitionné (batch layer)
+    gps_positions   -> Redis (état courant) + lake enrichi
+    delivery_events -> lake brut
+    orders          -> lake brut
+    driver_events   -> lake brut
 
-Les deux sinks consomment le MÊME DataFrame nettoyé mais écrivent vers des
-destinations différentes, chacun avec son propre checkpoint isolé.
+Chaque requête a son checkpoint isolé. Scheduler FAIR activé (config.py)
+pour partager équitablement les ressources entre les requêtes.
 
 Lancement : python -m streaming.main
-Prérequis : Kafka + Redis démarrés, simulateur en train de produire.
-Ctrl+C pour arrêter (arrêt gracieux des deux requêtes).
+Ctrl+C pour arrêter.
 """
+import time
+
 from streaming.config import get_spark, checkpoint_path
-from streaming.jobs.read_kafka import read_topic_raw, parse_events
-from streaming.jobs.validation import split_valid_invalid
-from streaming.jobs.cleaning import clean_events
+from streaming.jobs.pipeline import build_topic_pipeline
 from streaming.sinks.redis_sink import write_gps_batch
 from streaming.sinks.adls_sink import write_to_lake, write_enriched_to_lake
-
-
-def build_gps_stream(spark):
-    """
-    Construit le flux GPS nettoyé (sans le démarrer).
-    Ce DataFrame sera consommé par les deux sinks.
-    """
-    raw = read_topic_raw(spark, "gps_positions")
-    parsed = parse_events(raw, "gps_positions")
-    valid, _invalid = split_valid_invalid(parsed, "gps_positions")
-    cleaned = clean_events(valid)
-    return cleaned
+from streaming.sinks.deadletter_sink import write_dead_letter
 
 
 def run():
     spark = get_spark("DeliveryStreaming")
     spark.sparkContext.setLogLevel("WARN")
 
-    gps_stream = build_gps_stream(spark)
+    # ============================================================
+    # GPS : Redis (état courant) + lake enrichi
+    # ============================================================
+    gps_valid, gps_invalid = build_topic_pipeline(spark, "gps_positions")
 
-    # --- Sink 1 : Redis (état courant, speed layer) ---
-    gps_redis_query = (
-        gps_stream.writeStream
-        .foreachBatch(write_gps_batch)
-        .option("checkpointLocation", checkpoint_path("gps_redis"))
-        .trigger(processingTime="5 seconds")
-        .queryName("gps_to_redis")
+    gps_valid.writeStream \
+        .foreachBatch(write_gps_batch) \
+        .option("checkpointLocation", checkpoint_path("gps_redis")) \
+        .trigger(processingTime="5 seconds") \
+        .queryName("gps_to_redis") \
         .start()
-    )
 
-    # --- Sink 2 : Data lake (historique Parquet, batch layer) ---
-    gps_lake_query = write_enriched_to_lake(gps_stream, event_type="gps", query_name="gps")
+    write_enriched_to_lake(gps_valid, event_type="gps", query_name="lake_gps")
 
-    print("=== Flux GPS démarré : Redis + Lake. Ctrl+C pour arrêter. ===")
+    # ============================================================
+    # delivery_events / orders / driver_events : lake brut
+    # ============================================================
+    delivery_valid, delivery_invalid = build_topic_pipeline(spark, "delivery_events")
+    write_to_lake(delivery_valid, event_type="delivery", query_name="lake_delivery")
 
-    # Attend la fin de N'IMPORTE laquelle des requêtes (ou Ctrl+C).
-    spark.streams.awaitAnyTermination()
+    orders_valid, orders_invalid = build_topic_pipeline(spark, "orders")
+    write_to_lake(orders_valid, event_type="order", query_name="lake_orders")
+
+    driver_valid, driver_invalid = build_topic_pipeline(spark, "driver_events")
+    write_to_lake(driver_valid, event_type="driver", query_name="lake_drivers")
+
+    # ============================================================
+    # DLQ suspendues temporairement (simulateur ne produit que du valide).
+    # À réactiver après validation des 4 flux lake.
+    # ============================================================
+    # write_dead_letter(gps_invalid, query_name="dlq_gps")
+    # write_dead_letter(delivery_invalid, query_name="dlq_delivery")
+    # write_dead_letter(orders_invalid, query_name="dlq_orders")
+    # write_dead_letter(driver_invalid, query_name="dlq_drivers")
+
+    print("=== 5 flux démarrés (DLQ suspendues). Ctrl+C pour arrêter. ===")
+
+    # Monitoring : affiche l'activité de chaque requête toutes les 30s.
+    try:
+        while True:
+            time.sleep(30)
+            print("\n--- État des requêtes ---")
+            for q in spark.streams.active:
+                progress = q.lastProgress
+                if progress:
+                    rows = progress.get("numInputRows", 0)
+                    print(f"  {q.name:16} | batch {progress.get('batchId', '?'):>3} | {rows:>5} lignes | statut: {q.status['message'][:50]}")
+                else:
+                    print(f"  {q.name:16} | (aucun batch encore) | statut: {q.status['message'][:50]}")
+    except KeyboardInterrupt:
+        print("\nArrêt demandé...")
+        for q in spark.streams.active:
+            q.stop()
 
 
 if __name__ == "__main__":

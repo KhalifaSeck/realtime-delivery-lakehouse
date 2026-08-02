@@ -41,6 +41,7 @@ class BaseProducer:
             acks="all",             # attend l'accusé de toutes les répliques (durabilité)
             retries=3,              # retransmet en cas d'échec transitoire
             linger_ms=50,           # petite fenêtre de regroupement (throughput)
+            max_block_ms=10000,     # échoue en 10s si buffer plein (évite gel de 60s)
         )
         logger.info("KafkaProducer connecté à %s", servers)
 
