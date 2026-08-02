@@ -22,7 +22,7 @@ from streaming.jobs.read_kafka import read_topic_raw, parse_events
 from streaming.jobs.validation import split_valid_invalid
 from streaming.jobs.cleaning import clean_events
 from streaming.sinks.redis_sink import write_gps_batch
-from streaming.sinks.adls_sink import write_to_lake
+from streaming.sinks.adls_sink import write_to_lake, write_enriched_to_lake
 
 
 def build_gps_stream(spark):
@@ -54,7 +54,7 @@ def run():
     )
 
     # --- Sink 2 : Data lake (historique Parquet, batch layer) ---
-    gps_lake_query = write_to_lake(gps_stream, event_type="gps", query_name="gps")
+    gps_lake_query = write_enriched_to_lake(gps_stream, event_type="gps", query_name="gps")
 
     print("=== Flux GPS démarré : Redis + Lake. Ctrl+C pour arrêter. ===")
 

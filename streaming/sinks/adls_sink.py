@@ -1,37 +1,28 @@
 """
-Sink data lake : écrit l'historique brut des événements en Parquet.
+Sink data lake : écrit l'historique enrichi des événements en Parquet.
 
-Contrairement au sink Redis (état courant, une ligne par véhicule qu'on
-écrase), ce sink conserve TOUT l'historique : chaque événement devient une
-ligne Parquet immuable. C'est la couche "froide" analytique, destinée à
-alimenter Snowflake puis dbt.
+Deux modes d'écriture selon le besoin :
+  - write_to_lake        : écriture Parquet native (flux brut, sans window).
+  - write_enriched_to_lake : écriture via foreachBatch, avec enrichissement
+                             (métriques + anomalies) appliqué à chaque batch.
+                             Nécessaire car l'enrichissement utilise des
+                             window functions incompatibles avec le streaming
+                             natif append.
 
-Partitionnement : par date d'événement (event_date) et par type d'événement
-(event_type). Ça donne une arborescence du type :
-    <lake>/events/event_date=2026-08-01/event_type=gps/part-*.parquet
-
-En dev, <lake> est un chemin local (LAKE_OUTPUT_DIR, hors OneDrive).
-En prod, ce sera un chemin ADLS Gen2 (abfss://...), sans changer la logique.
-
-Écriture native Spark en streaming (format parquet), pas de foreachBatch :
-Spark gère lui-même l'append incrémental et le partitionnement.
+Partitionnement : event_date / event_type, comme avant.
+En dev : chemin local (LAKE_OUTPUT_DIR). En prod : ADLS Gen2.
 """
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from streaming.config import LAKE_OUTPUT_DIR, checkpoint_path
+from streaming.jobs.enrichment import enrich_gps
 
 
 def _prepare_for_lake(df: DataFrame, event_type: str) -> DataFrame:
     """
-    Prépare un DataFrame d'événements pour l'écriture Parquet partitionnée.
-
-    - Ajoute event_type (constante : 'gps', 'delivery', 'order', 'driver').
-    - Ajoute event_date, dérivée de event_time (colonne de partition).
-
-    event_time doit déjà exister (ajouté par le nettoyage). S'il est null
-    pour une ligne, event_date le sera aussi : Spark la rangera dans une
-    partition '__HIVE_DEFAULT_PARTITION__', ce qui reste acceptable.
+    Ajoute les colonnes de partition (event_type, event_date).
+    event_time doit déjà exister (ajouté par le nettoyage).
     """
     return (
         df
@@ -42,17 +33,11 @@ def _prepare_for_lake(df: DataFrame, event_type: str) -> DataFrame:
 
 def write_to_lake(df: DataFrame, event_type: str, query_name: str):
     """
-    Démarre l'écriture streaming d'un flux d'événements vers le data lake
-    en Parquet, partitionné par event_date et event_type.
-
-    - df         : DataFrame streaming nettoyé (avec event_time).
-    - event_type : étiquette du type ('gps', 'delivery', ...).
-    - query_name : nom unique de la requête (et de son checkpoint).
-
-    Retourne la StreamingQuery démarrée.
+    Écriture Parquet native (flux brut sans enrichissement).
+    Conservée pour les topics qui n'ont pas besoin de window functions
+    (delivery, orders, driver events aux étapes suivantes).
     """
     prepared = _prepare_for_lake(df, event_type)
-
     output_path = f"{LAKE_OUTPUT_DIR}\\events"
 
     return (
@@ -62,6 +47,42 @@ def write_to_lake(df: DataFrame, event_type: str, query_name: str):
         .option("checkpointLocation", checkpoint_path(f"lake_{query_name}"))
         .partitionBy("event_date", "event_type")
         .outputMode("append")
+        .trigger(processingTime="10 seconds")
+        .queryName(query_name)
+        .start()
+    )
+
+
+def write_enriched_to_lake(df: DataFrame, event_type: str, query_name: str):
+    """
+    Écriture Parquet AVEC enrichissement (métriques + anomalies), via
+    foreachBatch. Utilisé pour le flux GPS, qui bénéficie des window
+    functions (vitesse, distance, immobilité, anomalies).
+
+    Chaque micro-batch est enrichi (DataFrame statique) puis écrit en
+    Parquet partitionné, en mode append.
+    """
+    output_path = f"{LAKE_OUTPUT_DIR}\\events"
+
+    def write_batch(batch_df, batch_id):
+        if batch_df.isEmpty():
+            return
+        # Enrichissement sur le batch statique (window functions OK ici).
+        enriched = enrich_gps(batch_df)
+        prepared = _prepare_for_lake(enriched, event_type)
+        # anomaly_types est un array -> Parquet le gère nativement.
+        (
+            prepared.write
+            .format("parquet")
+            .partitionBy("event_date", "event_type")
+            .mode("append")
+            .save(output_path)
+        )
+
+    return (
+        df.writeStream
+        .foreachBatch(write_batch)
+        .option("checkpointLocation", checkpoint_path(f"lake_{query_name}"))
         .trigger(processingTime="10 seconds")
         .queryName(query_name)
         .start()
