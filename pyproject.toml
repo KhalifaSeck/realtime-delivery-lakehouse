@@ -10,7 +10,7 @@ requires-python = ">=3.10"
 
 [tool.setuptools.packages.find]
 # Packages Python du projet (dossiers avec __init__.py)
-include = ["simulator*", "streaming*", "api*"]
+include = ["simulator*", "streaming*", "api*", "quality*"]
 
 [tool.pytest.ini_options]
 # Ajoute la racine du projet au chemin d'import :
