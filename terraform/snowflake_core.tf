@@ -63,6 +63,7 @@ resource "snowflake_grant_privileges_to_account_role" "database_usage" {
   }
 }
 
+
 # ---------- Grants : le role a tous les droits sur le schema RAW ----------
 resource "snowflake_grant_privileges_to_account_role" "raw_schema_all" {
   account_role_name = snowflake_account_role.delivery.name
@@ -76,6 +77,17 @@ resource "snowflake_grant_privileges_to_account_role" "raw_schema_all" {
 
   on_schema {
     schema_name = "${snowflake_database.main.name}.${snowflake_schema.raw.name}"
+  }
+}
+# ---------- Grant : créer des schemas (nécessaire pour dbt) ----------
+# dbt crée les schemas STAGING, INTERMEDIATE, MARTS.
+resource "snowflake_grant_privileges_to_account_role" "database_create_schema" {
+  account_role_name = snowflake_account_role.delivery.name
+  privileges        = ["CREATE SCHEMA"]
+
+  on_account_object {
+    object_type = "DATABASE"
+    object_name = snowflake_database.main.name
   }
 }
 

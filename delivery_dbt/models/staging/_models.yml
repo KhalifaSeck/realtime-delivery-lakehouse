@@ -1,0 +1,84 @@
+version: 2
+
+# ============================================================
+# Documentation et tests sur les modèles STAGING.
+# ============================================================
+
+models:
+  # ---------- stg_gps_events ----------
+  - name: stg_gps_events
+    description: "Positions GPS nettoyées et typées."
+    columns:
+      - name: vehicle_id
+        description: "Identifiant du véhicule."
+        tests:
+          - not_null
+      - name: driver_id
+        description: "Identifiant du chauffeur au volant."
+        tests:
+          - not_null
+      - name: latitude
+        description: "Latitude en degrés décimaux (bounding box Montréal)."
+      - name: longitude
+        description: "Longitude en degrés décimaux (bounding box Montréal)."
+      - name: speed_kmh
+        description: "Vitesse instantanée en km/h."
+      - name: event_time
+        description: "Horodatage de la position GPS."
+        tests:
+          - not_null
+
+  # ---------- stg_delivery_events ----------
+  - name: stg_delivery_events
+    description: "Événements de livraison nettoyés et typés."
+    columns:
+      - name: package_id
+        tests:
+          - not_null
+      - name: order_id
+        tests:
+          - not_null
+      - name: status
+        description: "Statut normalisé de la livraison."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['picked_up', 'in_transit', 'delivered', 'failed']
+      - name: event_time
+        tests:
+          - not_null
+
+  # ---------- stg_orders ----------
+  - name: stg_orders
+    description: "Commandes clients, une ligne par order_id (dédoublonnée)."
+    columns:
+      - name: order_id
+        description: "Identifiant unique de la commande."
+        tests:
+          - not_null
+          - unique
+      - name: package_id
+        tests:
+          - not_null
+      - name: event_time
+        tests:
+          - not_null
+
+  # ---------- stg_driver_events ----------
+  - name: stg_driver_events
+    description: "Changements de statut des chauffeurs."
+    columns:
+      - name: driver_id
+        tests:
+          - not_null
+      - name: status
+        description: "Statut normalisé du chauffeur."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['online', 'offline', 'on_break', 'delivering']
+      - name: event_time
+        tests:
+          - not_null

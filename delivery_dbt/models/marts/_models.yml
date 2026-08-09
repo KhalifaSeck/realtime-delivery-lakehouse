@@ -1,0 +1,89 @@
+version: 2
+
+# ============================================================
+# Documentation des modèles MARTS (Gold).
+# Ces modèles sont exposés à Power BI (Brique 10).
+# ============================================================
+
+models:
+  # ---------- dim_drivers ----------
+  - name: dim_drivers
+    description: "Dimension chauffeurs avec statut actuel et métriques d'activité."
+    columns:
+      - name: driver_id
+        description: "Identifiant unique du chauffeur (clé primaire)."
+        tests:
+          - not_null
+          - unique
+      - name: current_status
+        description: "Dernier statut connu du chauffeur."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['online', 'offline', 'on_break', 'delivering']
+      - name: success_rate_pct
+        description: "Taux de livraisons réussies (0-100)."
+
+  # ---------- dim_vehicles ----------
+  - name: dim_vehicles
+    description: "Dimension véhicules avec métriques d'activité GPS agrégées."
+    columns:
+      - name: vehicle_id
+        description: "Identifiant unique du véhicule (clé primaire)."
+        tests:
+          - not_null
+          - unique
+      - name: n_active_days
+        description: "Nombre de jours distincts avec de l'activité GPS."
+
+  # ---------- dim_date ----------
+  - name: dim_date
+    description: |
+      Dimension calendrier : une ligne par jour couvrant la période
+      des données (min/max de fct_daily_activity ±30 jours).
+      Utilisée pour les filtres temporels dans Power BI.
+    columns:
+      - name: date_day
+        description: "Date (clé primaire)."
+        tests:
+          - not_null
+          - unique
+      - name: is_weekend
+        description: "TRUE si samedi ou dimanche."
+      - name: is_business_day
+        description: "TRUE si jour ouvrable (lundi-vendredi)."
+
+  # ---------- fct_deliveries ----------
+  - name: fct_deliveries
+    description: |
+      Fait livraisons : une ligne par package_id avec cycle complet
+      (picked_up → in_transit → delivered/failed) et métriques temporelles.
+    columns:
+      - name: package_id
+        description: "Identifiant unique du package (clé primaire)."
+        tests:
+          - not_null
+          - unique
+      - name: final_status
+        description: "Statut final de la livraison."
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['delivered', 'failed', 'in_transit', 'picked_up', 'pending']
+      - name: minutes_pickup_to_delivery
+        description: "Durée entre le pickup et la livraison (minutes)."
+
+  # ---------- fct_daily_activity ----------
+  - name: fct_daily_activity
+    description: "Fait activité quotidienne : agrégats journaliers de la flotte entière."
+    columns:
+      - name: activity_date
+        description: "Date d'activité (clé primaire)."
+        tests:
+          - not_null
+          - unique
+      - name: n_active_vehicles
+        description: "Nombre de véhicules actifs ce jour."
+  

@@ -1,0 +1,73 @@
+version: 2
+
+# ============================================================
+# Sources : tables RAW créées par Terraform (Brique 8).
+# dbt les consomme comme point d'entrée, sans les créer.
+# ============================================================
+
+sources:
+  - name: raw
+    database: DELIVERY_LAKEHOUSE
+    schema: RAW
+    description: "Données brutes ingérées du lake ADLS Gen2."
+
+    tables:
+      - name: gps_events
+        description: "Positions GPS des véhicules (lat, lon, speed, event_time)."
+        columns:
+          - name: vehicle_id
+            description: "Identifiant du véhicule."
+            tests:
+              - not_null
+          - name: driver_id
+            description: "Identifiant du chauffeur au volant."
+            tests:
+              - not_null
+          - name: lat
+          - name: lon
+          - name: speed_kmh
+          - name: event_time
+            tests:
+              - not_null
+
+      - name: delivery_events
+        description: "Événements de livraison (statuts, timestamps)."
+        columns:
+          - name: package_id
+            tests:
+              - not_null
+          - name: order_id
+            tests:
+              - not_null
+          - name: vehicle_id
+          - name: driver_id
+          - name: status
+          - name: event_time
+            tests:
+              - not_null
+
+      - name: orders
+        description: "Commandes clients."
+        columns:
+          - name: order_id
+            tests:
+              - not_null
+          - name: package_id
+            tests:
+              - not_null
+          - name: status
+          - name: event_time
+            tests:
+              - not_null
+
+      - name: driver_events
+        description: "Changements de statut chauffeurs (online, offline, delivering, on_break)."
+        columns:
+          - name: driver_id
+            tests:
+              - not_null
+          - name: vehicle_id
+          - name: status
+          - name: event_time
+            tests:
+              - not_null
