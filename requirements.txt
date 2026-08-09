@@ -1,0 +1,9 @@
+fastapi[standard]
+uvicorn
+redis
+pandas
+prometheus-client
+prometheus-fastapi-instrumentator
+starlette
+great_expectations
+pyarrow

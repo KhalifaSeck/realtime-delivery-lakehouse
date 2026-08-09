@@ -50,6 +50,54 @@ services:
       timeout: 5s
       retries: 5
 
+  # ---------- Prometheus (monitoring) ----------
+  prometheus:
+      image: prom/prometheus:v2.53.0
+      container_name: delivery-prometheus
+      volumes:
+        - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+        - prometheus_data:/prometheus
+      ports:
+        - "9090:9090"
+      command:
+        - '--config.file=/etc/prometheus/prometheus.yml'
+        - '--storage.tsdb.path=/prometheus'
+        - '--storage.tsdb.retention.time=7d'
+      restart: unless-stopped
+
+  # ---------- Grafana (visualisation des métriques) ----------
+  grafana:
+      image: grafana/grafana:11.1.0
+      container_name: delivery-grafana
+      volumes:
+        - grafana_data:/var/lib/grafana
+        - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      ports:
+        - "3000:3000"
+      environment:
+        - GF_SECURITY_ADMIN_USER=admin
+        - GF_SECURITY_ADMIN_PASSWORD=admin
+        - GF_USERS_ALLOW_SIGN_UP=false
+      depends_on:
+        - prometheus
+      restart: unless-stopped
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: delivery-api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Monte ton lake Windows en lecture seule dans le conteneur.
+      - C:\delivery-lake:/data/delivery-lake:ro
+    depends_on:
+      - redis
+    restart: unless-stopped
+
 volumes:
   kafka_data:
   redis_data:
+  prometheus_data:
+  grafana_data:
+  

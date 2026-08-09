@@ -1,0 +1,14 @@
+# Provisioning automatique : Grafana ajoute Prometheus comme source
+# de données au démarrage, sans avoir à le configurer manuellement.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    # URL depuis un conteneur Grafana vers un conteneur Prometheus :
+    # on utilise le nom du service docker-compose (résolu via DNS Docker).
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true

@@ -17,7 +17,9 @@ import os
 import pandas as pd
 import great_expectations as gx
 
-from streaming.config import LAKE_OUTPUT_DIR
+import os
+
+LAKE_OUTPUT_DIR = os.getenv("LAKE_OUTPUT_DIR", r"C:\delivery-lake")
 from quality.runner import (
     validate_gps, validate_delivery, validate_order, validate_driver,
 )

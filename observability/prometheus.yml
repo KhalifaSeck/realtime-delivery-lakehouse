@@ -1,0 +1,26 @@
+# Configuration Prometheus pour la plateforme delivery.
+# - scrape_interval : à quelle fréquence collecter les métriques.
+# - scrape_timeout  : combien de temps attendre une réponse.
+
+global:
+  scrape_interval: 100s
+  scrape_timeout: 50s
+  external_labels:
+    project: delivery-lakehouse
+
+scrape_configs:
+
+  # Prometheus scrape ses propres métriques (utile pour tester).
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # API FastAPI (métriques HTTP + métriques métier custom).
+  # host.docker.internal = résout vers l'hôte depuis un conteneur Docker.
+  # Sur Windows/Mac Docker Desktop, cette adresse fonctionne nativement.
+  - job_name: delivery-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['api:8000']
+        labels:
+          service: api
