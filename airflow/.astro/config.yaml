@@ -1,0 +1,11 @@
+project:
+  name: airflow
+
+webserver:
+  port: 8081
+
+postgres:
+  port: 5433
+
+triggerer:
+  port: 8794

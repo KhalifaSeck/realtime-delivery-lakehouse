@@ -5,18 +5,29 @@ Deux modes d'écriture selon le besoin :
   - write_to_lake        : écriture Parquet native (flux brut, sans window).
   - write_enriched_to_lake : écriture via foreachBatch, avec enrichissement
                              (métriques + anomalies) appliqué à chaque batch.
-                             Nécessaire car l'enrichissement utilise des
-                             window functions incompatibles avec le streaming
-                             natif append.
 
-Partitionnement : event_date / event_type, comme avant.
-En dev : chemin local (LAKE_OUTPUT_DIR). En prod : ADLS Gen2.
+Dual-write : écrit simultanément en local ET dans ADLS Gen2 (contrôlé
+par les flags SPARK_WRITE_LOCAL et SPARK_WRITE_ADLS de config.py).
+
+Partitionnement : event_date / event_type.
 """
+import os
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
-from streaming.config import LAKE_OUTPUT_DIR, checkpoint_path
+from streaming.config import (
+    LAKE_OUTPUT_DIR,
+    checkpoint_path,
+    ADLS_BASE_URI,
+    SPARK_WRITE_ADLS,
+    adls_output_path,
+    adls_checkpoint_path,
+)
 from streaming.jobs.enrichment import enrich_gps
+
+
+# Flag pour écrire aussi en local (défaut : True pour rester débuggable)
+SPARK_WRITE_LOCAL = os.getenv("SPARK_WRITE_LOCAL", "true").lower() == "true"
 
 
 def _prepare_for_lake(df: DataFrame, event_type: str) -> DataFrame:
@@ -31,53 +42,105 @@ def _prepare_for_lake(df: DataFrame, event_type: str) -> DataFrame:
     )
 
 
+def _local_output_path(event_type: str) -> str:
+    """Chemin de sortie local (Windows)."""
+    return f"{LAKE_OUTPUT_DIR}\\events\\{event_type}"
+
+
+# ============================================================
+# Mode 1 : écriture native Parquet (sans enrichissement)
+# ============================================================
 def write_to_lake(df: DataFrame, event_type: str, query_name: str):
     """
     Écriture Parquet native (flux brut sans enrichissement).
-    Conservée pour les topics qui n'ont pas besoin de window functions
-    (delivery, orders, driver events aux étapes suivantes).
+    Dual-write : local + ADLS selon les flags SPARK_WRITE_LOCAL / SPARK_WRITE_ADLS.
+
+    Retourne la liste des StreamingQuery démarrées (1 ou 2 selon la config).
     """
     prepared = _prepare_for_lake(df, event_type)
-    #output_path = f"{LAKE_OUTPUT_DIR}\\events"
-    output_path = f"{LAKE_OUTPUT_DIR}\\events\\{event_type}"
-    return (
-        prepared.writeStream
-        .format("parquet")
-        .option("path", output_path)
-        .option("checkpointLocation", checkpoint_path(f"lake_{query_name}"))
-        .partitionBy("event_date", "event_type")
-        .outputMode("append")
-        .trigger(processingTime="10 seconds")
-        .queryName(query_name)
-        .start()
-    )
+    queries = []
+
+    # Sink LOCAL
+    if SPARK_WRITE_LOCAL:
+        q_local = (
+            prepared.writeStream
+            .format("parquet")
+            .option("path", _local_output_path(event_type))
+            .option("checkpointLocation", checkpoint_path(f"lake_{query_name}"))
+            .partitionBy("event_date", "event_type")
+            .outputMode("append")
+            .trigger(processingTime="10 seconds")
+            .queryName(query_name)
+            .start()
+        )
+        queries.append(q_local)
+
+    # Sink ADLS
+    if SPARK_WRITE_ADLS:
+        q_adls = (
+            prepared.writeStream
+            .format("parquet")
+            .option("path", adls_output_path(event_type))
+            .option("checkpointLocation", adls_checkpoint_path(query_name))
+            .partitionBy("event_date", "event_type")
+            .outputMode("append")
+            .trigger(processingTime="10 seconds")
+            .queryName(f"{query_name}_adls")
+            .start()
+        )
+        queries.append(q_adls)
+
+    return queries
 
 
+# ============================================================
+# Mode 2 : écriture avec enrichissement (via foreachBatch)
+# ============================================================
 def write_enriched_to_lake(df: DataFrame, event_type: str, query_name: str):
     """
     Écriture Parquet AVEC enrichissement (métriques + anomalies), via
-    foreachBatch. Utilisé pour le flux GPS, qui bénéficie des window
-    functions (vitesse, distance, immobilité, anomalies).
+    foreachBatch. Utilisé pour le flux GPS.
 
-    Chaque micro-batch est enrichi (DataFrame statique) puis écrit en
-    Parquet partitionné, en mode append.
+    Dual-write intégré dans le foreachBatch : chaque batch enrichi est
+    écrit sur local ET/OU ADLS selon les flags.
     """
-    output_path = f"{LAKE_OUTPUT_DIR}\\events\\{event_type}"
+    local_path = _local_output_path(event_type)
+    adls_path = adls_output_path(event_type)
 
     def write_batch(batch_df, batch_id):
         if batch_df.isEmpty():
             return
-        # Enrichissement sur le batch statique (window functions OK ici).
+
+        # Enrichissement (window functions OK sur DF statique)
         enriched = enrich_gps(batch_df)
         prepared = _prepare_for_lake(enriched, event_type)
-        # anomaly_types est un array -> Parquet le gère nativement.
-        (
-            prepared.write
-            .format("parquet")
-            .partitionBy("event_date", "event_type")
-            .mode("append")
-            .save(output_path)
-        )
+
+        # Cache le DF pour éviter de recalculer si double écriture.
+        if SPARK_WRITE_LOCAL and SPARK_WRITE_ADLS:
+            prepared.persist()
+
+        # Écriture LOCAL
+        if SPARK_WRITE_LOCAL:
+            (
+                prepared.write
+                .format("parquet")
+                .partitionBy("event_date", "event_type")
+                .mode("append")
+                .save(local_path)
+            )
+
+        # Écriture ADLS
+        if SPARK_WRITE_ADLS:
+            (
+                prepared.write
+                .format("parquet")
+                .partitionBy("event_date", "event_type")
+                .mode("append")
+                .save(adls_path)
+            )
+
+        if SPARK_WRITE_LOCAL and SPARK_WRITE_ADLS:
+            prepared.unpersist()
 
     return (
         df.writeStream

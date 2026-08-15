@@ -128,6 +128,14 @@ output "adls_sas_token" {
   sensitive   = true
 }
 
+output "adls_account_key" {
+  description = "Clé primaire du Storage Account (pour Spark SharedKey auth)."
+  value       = azurerm_storage_account.lake.primary_access_key
+  sensitive   = true
+}
+
+
+
 # ============================================================
 # SAS token pour l'ingestion Python (WRITE + LIST).
 #

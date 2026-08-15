@@ -1,0 +1,126 @@
+dbt_project:
+  outputs:
+    dev:
+      dbname: sentinel
+      host: localhost
+      pass: sentinel
+      port: 5433
+      schema: analytics
+      threads: 4
+      type: postgres
+      user: sentinel
+  target: dev
+delivery_dbt:
+  outputs:
+    dev:
+      account: IBLVPMU-OOB89751
+      database: DELIVERY_LAKEHOUSE
+      password: Khalifaseck1996@
+      role: DELIVERY_ROLE
+      schema: STAGING
+      threads: 4
+      type: snowflake
+      user: BAKISSECK96
+      warehouse: DELIVERY_WH
+  target: dev
+ehr_pipeline:
+  outputs:
+    dev:
+      account: https://lw87791.ca-central-1.aws.snowflakecomputing.com
+      database: ehr_pipeline
+      password: Khalifaseck1996@
+      role: dbt_role
+      schema: staging
+      threads: 10
+      type: snowflake
+      user: KhalifaSeck
+      warehouse: ehr_wh
+  target: dev
+ehr_pipeline_gcp:
+  outputs:
+    dev:
+      dataset: ehr_staging
+      job_execution_timeout_seconds: 300
+      job_retries: 1
+      keyfile: C:\Users\lifas\OneDrive\Documents\Data Engineering\Projet\Airflow_DBT_GCP\ehr-pipeline-sa-key.json
+      location: US
+      method: service-account
+      priority: interactive
+      project: ehr-pipeline-gcp
+      threads: 10
+      type: bigquery
+  target: dev
+etl_sales:
+  outputs:
+    dev:
+      dbname: bigmartsales
+      host: localhost
+      pass: ok
+      port: 5432
+      schema: public
+      threads: 10
+      type: postgres
+      user: postgres
+  target: dev
+jaffle_shop:
+  outputs:
+    dev:
+      account: edlf,f
+      database: f
+      password: f
+      role: f
+      schema: f
+      threads: 16
+      type: snowflake
+      user: fmf
+      warehouse: f
+  target: dev
+lakehouse:
+  outputs:
+    dev:
+      account: LDDIOVC-IJ12052
+      database: LAKEHOUSE_DB
+      password: Khalifaseck1996@
+      role: ACCOUNTADMIN
+      schema: SILVER
+      threads: 4
+      type: snowflake
+      user: LIFASECK
+      warehouse: WH_LAKEHOUSE
+  target: dev
+media_analytics:
+  outputs:
+    dev:
+      dbname: media_dw
+      host: localhost
+      pass: postgres
+      port: 5432
+      schema: staging
+      threads: 4
+      type: postgres
+      user: postgres
+  target: dev
+taxi_rides_ny:
+  outputs:
+    dev:
+      path: dev.duckdb
+      threads: 1
+      type: duckdb
+    prod:
+      path: prod.duckdb
+      threads: 4
+      type: duckdb
+  target: dev
+ticketing:
+  outputs:
+    dev:
+      account: https://lw87791.ca-central-1.aws.snowflakecomputing.com
+      database: ticketing
+      password: Khalifaseck1996@
+      role: dbt_role
+      schema: dbt_schema
+      threads: 10
+      type: snowflake
+      user: KhalifaSeck
+      warehouse: dbt_warehouse
+  target: dev

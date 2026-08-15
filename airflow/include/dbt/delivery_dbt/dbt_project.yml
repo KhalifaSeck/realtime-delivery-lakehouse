@@ -1,0 +1,40 @@
+# ============================================================
+# dbt project pour le projet delivery lakehouse.
+#
+# Architecture médaillon 3 couches :
+#   - staging      : nettoyage et typage (1-à-1 avec RAW)
+#   - intermediate : logique métier réutilisable (jointures, agrégations)
+#   - marts        : livrables analytiques (KPIs pour Power BI)
+# ============================================================
+
+name: 'delivery_dbt'
+version: '1.0.0'
+config-version: 2
+
+profile: 'delivery_dbt'
+
+model-paths:    ["models"]
+analysis-paths: ["analyses"]
+test-paths:     ["tests"]
+seed-paths:     ["seeds"]
+macro-paths:    ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# ============================================================
+# Configuration par couche
+# ============================================================
+models:
+  delivery_dbt:
+    # STAGING : Silver — nettoyage, cast, dedup
+    staging:
+      +materialized: view
+      +schema: staging
+
+    # MARTS : Gold — KPIs analytiques pour Power BI
+    marts:
+      +materialized: table
+      +schema: marts
