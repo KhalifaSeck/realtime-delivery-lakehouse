@@ -1,0 +1,27 @@
+# ============================================================
+# ConfigMap : variables non-sensibles partagées entre les pods.
+# ============================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: delivery-config
+  namespace: delivery
+  labels:
+    project: delivery-lakehouse
+data:
+  # Kafka
+  KAFKA_BOOTSTRAP_SERVERS: "kafka-service:29092"
+
+  # Redis
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+
+  # API
+  API_PORT: "8000"
+
+  # Lake (dans le conteneur)
+  LAKE_OUTPUT_DIR: "/data/delivery-lake"
+
+  # ADLS Gen2
+  ADLS_ACCOUNT_NAME: "deliverydevlakesa"
+  ADLS_CONTAINER: "raw-events"

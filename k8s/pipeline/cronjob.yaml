@@ -1,0 +1,74 @@
+# ============================================================
+# CronJob : pipeline batch ADLS -> Snowflake -> dbt
+# Exécuté toutes les 5 minutes.
+# Remplace Airflow pour ce projet (plus léger, natif K8s).
+# ============================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: pipeline-job
+  namespace: delivery
+  labels:
+    app: pipeline
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid          # Pas de chevauchement entre runs
+  successfulJobsHistoryLimit: 3      # Garde les 3 derniers succès
+  failedJobsHistoryLimit: 3          # Garde les 3 derniers échecs
+  jobTemplate:
+    spec:
+      backoffLimit: 1                # 1 seul retry en cas d'échec
+      activeDeadlineSeconds: 300     # Timeout 5 min max
+      template:
+        metadata:
+          labels:
+            app: pipeline
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: pipeline
+              image: delivery-pipeline:latest
+              imagePullPolicy: Never
+              env:
+                # Snowflake credentials
+                - name: SNOWFLAKE_ACCOUNT
+                  value: "IBLVPMU-OOB89751"
+                - name: SNOWFLAKE_USER
+                  value: "BAKISSECK96"
+                - name: SNOWFLAKE_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: delivery-secrets
+                      key: SNOWFLAKE_PASSWORD
+                - name: SNOWFLAKE_ROLE
+                  value: "DELIVERY_ROLE"
+                - name: SNOWFLAKE_WAREHOUSE
+                  value: "DELIVERY_WH"
+                - name: SNOWFLAKE_DATABASE
+                  value: "DELIVERY_LAKEHOUSE"
+                - name: SNOWFLAKE_SCHEMA
+                  value: "RAW"
+
+                # ADLS (pour copy_to_snowflake)
+                - name: ADLS_ACCOUNT_NAME
+                  valueFrom:
+                    configMapKeyRef:
+                      name: delivery-config
+                      key: ADLS_ACCOUNT_NAME
+                - name: ADLS_CONTAINER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: delivery-config
+                      key: ADLS_CONTAINER
+                - name: ADLS_SAS_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: delivery-secrets
+                      key: ADLS_SAS_TOKEN
+              resources:
+                requests:
+                  memory: "512Mi"
+                  cpu: "250m"
+                limits:
+                  memory: "1Gi"
+                  cpu: "500m"

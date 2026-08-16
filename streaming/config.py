@@ -9,8 +9,11 @@ Les schémas (schemas.py) et la logique de traitement (jobs/) sont séparés.
 
 Dual-write : support de l'écriture vers ADLS Gen2 (contrôlé par SPARK_WRITE_ADLS).
 Auth ADLS : SharedKey (clé du Storage Account), compatible Hadoop 3.3.2.
-Note : FixedSASTokenProvider (auth SAS) nécessite Hadoop >= 3.4.1,
-incompatible avec Spark 3.3.4 qui embarque Hadoop 3.3.2.
+
+JARs :
+  - Windows : Kafka téléchargé via Maven au démarrage, Azure dans $SPARK_HOME/jars/
+  - Linux (Docker/K8s) : tous les JARs pré-installés dans $SPARK_HOME/jars/
+    via le Dockerfile, classpath forcé via spark.driver.extraClassPath
 """
 import os
 import sys
@@ -38,6 +41,11 @@ if platform.system() == "Windows":
 from pyspark.sql import SparkSession
 
 # ============================================================
+# Détection de l'OS
+# ============================================================
+_IS_WINDOWS = platform.system() == "Windows"
+
+# ============================================================
 # Répertoire de sortie du data lake local (Parquet).
 # ============================================================
 LAKE_OUTPUT_DIR = os.getenv("LAKE_OUTPUT_DIR", r"C:\delivery-lake")
@@ -59,9 +67,6 @@ CHECKPOINT_DIR = os.getenv("SPARK_CHECKPOINT_DIR", r"C:\spark-checkpoints")
 # ============================================================
 ADLS_ACCOUNT = os.getenv("ADLS_ACCOUNT_NAME", "deliverydevlakesa")
 ADLS_CONTAINER = os.getenv("ADLS_CONTAINER", "raw-events")
-
-# SharedKey : clé primaire du Storage Account (compatible Hadoop 3.3.2).
-# Récupérée via : terraform output -raw adls_account_key
 ADLS_ACCOUNT_KEY = os.getenv("ADLS_ACCOUNT_KEY", "")
 
 # URI de base ADLS Gen2 (abfss = Azure Blob File System Secure)
@@ -71,50 +76,61 @@ ADLS_BASE_URI = f"abfss://{ADLS_CONTAINER}@{ADLS_ACCOUNT}.dfs.core.windows.net"
 SPARK_WRITE_ADLS = os.getenv("SPARK_WRITE_ADLS", "true").lower() == "true"
 
 # ============================================================
-# Packages Spark
+# Packages Spark (Windows uniquement)
 # ============================================================
-# Kafka via Maven.
+# Sous Windows, Kafka est téléchargé via Maven au démarrage.
+# Sous Linux (Docker/K8s), tous les JARs sont pré-installés
+# dans $SPARK_HOME/jars/ via le Dockerfile.
 _SPARK_MAVEN_PACKAGES = "org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.4"
-
-# Les JARs Azure (hadoop-azure-3.3.6.jar, azure-storage-8.6.6.jar,
-# wildfly-openssl-1.0.7.Final.jar) sont dans $SPARK_HOME/jars/
-# (copiés manuellement). Pas besoin de spark.jars ici.
 
 
 def get_spark(app_name: str = "DeliveryStreaming") -> SparkSession:
     """
     Fabrique (ou récupère) la session Spark configurée pour le streaming.
 
-    - Charge le connecteur Kafka via spark.jars.packages (Maven).
-    - Les JARs Hadoop-Azure sont dans $SPARK_HOME/jars/ (chargés auto).
+    - Sous Windows : charge le connecteur Kafka via Maven (spark.jars.packages).
+    - Sous Linux (K8s) : tous les JARs sont dans $SPARK_HOME/jars/,
+      classpath forcé via spark.driver.extraClassPath.
     - Configure l'authentification SharedKey pour ADLS Gen2 APRÈS la
       création du SparkContext (pour éviter le bug Windows '&').
     - Arrêt gracieux activé pour ne pas corrompre les checkpoints.
     """
-    spark = (
+    builder = (
         SparkSession.builder
         .appName(app_name)
-        .config("spark.jars.packages", _SPARK_MAVEN_PACKAGES)
         .config("spark.sql.shuffle.partitions", "4")
         .config("spark.streaming.stopGracefullyOnShutdown", "true")
         .config("spark.sql.streaming.forceDeleteTempCheckpointLocation", "true")
-        .config("spark.driver.memory", "4g")
+        .config("spark.driver.memory", os.getenv("SPARK_DRIVER_MEMORY", "4g"))
         .config("spark.sql.streaming.metricsEnabled", "true")
         .config("spark.scheduler.mode", "FAIR")
-        .getOrCreate()
     )
+
+    if _IS_WINDOWS:
+        # Windows : télécharge Kafka via Maven au démarrage
+        builder = builder.config("spark.jars.packages", _SPARK_MAVEN_PACKAGES)
+    else:
+        # Linux (Docker/K8s) : JARs pré-installés dans $SPARK_HOME/jars/
+        # Forcer le classpath pour que Spark les trouve au runtime
+        import pyspark
+        jars_dir = os.path.join(pyspark.__path__[0], "jars", "*")
+        builder = (builder
+            .config("spark.driver.extraClassPath", jars_dir)
+            .config("spark.executor.extraClassPath", jars_dir)
+        )
+
+    spark = builder.getOrCreate()
 
     # ------------------------------------------------------------
     # Config ADLS Gen2 via SharedKey — APRÈS la création du SparkContext.
     #
-    # SharedKey utilise la clé primaire du Storage Account.
-    # Compatible avec Hadoop 3.3.2 embarqué dans Spark 3.3.4.
+    # POURQUOI APRÈS : quand on passe des valeurs contenant des caractères
+    # spéciaux via .config() du builder, PySpark les transmet au JVM via
+    # la ligne de commande. Sous Windows, les '&' sont interprétés comme
+    # des séparateurs de commande (cmd.exe).
     #
-    # Note : FixedSASTokenProvider (auth SAS) nécessite Hadoop >= 3.4.1.
-    # On utilise SharedKey comme alternative fonctionnelle.
-    #
-    # En production, on utiliserait un Service Principal Azure AD
-    # (OAuth2) pour une auth plus granulaire et auditable.
+    # En configurant via hadoopConfiguration().set() APRÈS le getOrCreate(),
+    # on injecte les valeurs directement dans la JVM en mémoire.
     # ------------------------------------------------------------
     if SPARK_WRITE_ADLS and ADLS_ACCOUNT_KEY:
         adls_host = f"{ADLS_ACCOUNT}.dfs.core.windows.net"
@@ -127,7 +143,7 @@ def get_spark(app_name: str = "DeliveryStreaming") -> SparkSession:
         )
         print(f"[config] ADLS Gen2 configuré (SharedKey) pour {adls_host}")
     elif SPARK_WRITE_ADLS:
-        print("[config] WARN: SPARK_WRITE_ADLS=true mais ADLS_ACCOUNT_KEY manquant. Écriture ADLS désactivée.")
+        print("[config] WARN: SPARK_WRITE_ADLS=true mais ADLS_ACCOUNT_KEY manquant.")
 
     return spark
 

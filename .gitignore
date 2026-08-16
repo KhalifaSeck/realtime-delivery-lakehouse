@@ -222,7 +222,7 @@ __marimo__/
 .venv/
 venv/
 env/
-
+k8s/secrets.yaml
 # Python
 __pycache__/
 *.py[cod]

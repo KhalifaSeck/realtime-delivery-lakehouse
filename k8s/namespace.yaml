@@ -1,0 +1,11 @@
+# ============================================================
+# Namespace dédié au projet delivery lakehouse.
+# Isole les ressources du projet des autres workloads K8s.
+# ============================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: delivery
+  labels:
+    project: delivery-lakehouse
+    environment: dev

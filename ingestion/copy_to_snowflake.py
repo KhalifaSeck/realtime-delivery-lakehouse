@@ -9,7 +9,7 @@ Usage :
     python -m ingestion.copy_to_snowflake --type gps       # un seul type
     python -m ingestion.copy_to_snowflake --truncate       # vide les tables avant
 
-Auth : credentials depuis .env.
+Auth : credentials depuis .env ou variables d'environnement.
 """
 import argparse
 import os
@@ -57,31 +57,44 @@ def _copy_into_table(cursor, event_type: str) -> dict:
     """
     Exécute le COPY INTO pour un type d'événement.
 
-    Utilise MATCH_BY_COLUMN_NAME=CASE_INSENSITIVE : Snowflake mappe
-    automatiquement chaque colonne du Parquet à la colonne de même nom
-    dans la table (peu importe la casse).
+    Utilise MATCH_BY_COLUMN_NAME=CASE_INSENSITIVE et PATTERN pour
+    ne charger que les vrais fichiers Parquet (ignore _spark_metadata).
     """
     table_name, path_prefix = _EVENT_TO_TABLE[event_type]
 
-    # ON_ERROR='CONTINUE' : si un fichier est corrompu, on continue avec les autres.
-    # FORCE=TRUE : retraite les fichiers déjà chargés (utile pour tests).
     sql = f"""
         COPY INTO {_SNOW_SCHEMA}.{table_name}
         FROM @DELIVERY_STAGE/{path_prefix}
         FILE_FORMAT = (FORMAT_NAME = PARQUET_FORMAT)
         MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE
         ON_ERROR = 'CONTINUE'
+        PATTERN = '.*\\.parquet'
     """
-
 
     print(f"\n=== COPY INTO {table_name} ===")
     cursor.execute(sql)
 
-    # Récupère le résumé : Snowflake renvoie une ligne par fichier chargé.
     rows = cursor.fetchall()
     n_files = len(rows)
-    n_loaded = sum(r[3] for r in rows if r[3] is not None)   # rows_loaded
-    n_errors = sum(r[5] for r in rows if r[5] is not None)   # errors_seen
+
+    # Parsing robuste : le format de retour varie selon la version
+    # Snowflake et les options (PATTERN, FORCE, etc.).
+    # Format standard : (file, status, rows_parsed, rows_loaded, error_limit, errors_seen, ...)
+    # Format minimal (0 fichiers) : tuple court ou résultat vide.
+    n_loaded = 0
+    n_errors = 0
+    for r in rows:
+        try:
+            if len(r) >= 6:
+                n_loaded += (r[3] or 0)
+                n_errors += (r[5] or 0)
+            elif len(r) >= 4:
+                n_loaded += (r[3] or 0)
+            elif len(r) >= 2:
+                if str(r[1]).upper() == 'LOADED':
+                    n_loaded += 1
+        except (IndexError, TypeError):
+            pass
 
     print(f"  Fichiers traités : {n_files}")
     print(f"  Lignes chargées  : {n_loaded:,}")
@@ -109,7 +122,7 @@ def _count_rows(cursor, event_type: str) -> int:
     return cursor.fetchone()[0]
 
 
-def load_events(event_type: str | None = None, truncate: bool = False) -> list[dict]:
+def load_events(event_type=None, truncate=False):
     """Charge un ou tous les types depuis ADLS vers Snowflake."""
     types = [event_type] if event_type else list(_EVENT_TO_TABLE.keys())
     results = []

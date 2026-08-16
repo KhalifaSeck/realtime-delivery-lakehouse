@@ -1,0 +1,71 @@
+# ============================================================
+# Spark Structured Streaming : lit Kafka, écrit Redis + ADLS Gen2.
+#
+# En K8s, l'écriture locale est désactivée (SPARK_WRITE_LOCAL=false).
+# Seul ADLS reçoit les Parquet (cloud-native).
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark
+  namespace: delivery
+  labels:
+    app: spark
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark
+  template:
+    metadata:
+      labels:
+        app: spark
+    spec:
+      containers:
+        - name: spark
+          image: delivery-spark:latest
+          imagePullPolicy: Never
+          env:
+            # Kafka (via service K8s interne)
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-service:29092"
+
+            # Redis (via service K8s interne)
+            - name: REDIS_HOST
+              value: "redis-service"
+            - name: REDIS_PORT
+              value: "6379"
+
+            # ADLS Gen2 : écriture cloud activée
+            - name: SPARK_WRITE_ADLS
+              value: "true"
+            - name: SPARK_WRITE_LOCAL
+              value: "false"
+            - name: ADLS_ACCOUNT_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: delivery-config
+                  key: ADLS_ACCOUNT_NAME
+            - name: ADLS_CONTAINER
+              valueFrom:
+                configMapKeyRef:
+                  name: delivery-config
+                  key: ADLS_CONTAINER
+            - name: ADLS_ACCOUNT_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: delivery-secrets
+                  key: ADLS_ACCOUNT_KEY
+
+            # Checkpoints dans un volume éphémère
+            - name: SPARK_CHECKPOINT_DIR
+              value: "/tmp/spark-checkpoints"
+            - name: SPARK_DRIVER_MEMORY
+              value: "1g"
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"

@@ -1,0 +1,37 @@
+# ============================================================
+# Simulateur : génère les événements GPS, delivery, orders, driver.
+# Envoie vers Kafka via le service K8s interne.
+# ============================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simulator
+  namespace: delivery
+  labels:
+    app: simulator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simulator
+  template:
+    metadata:
+      labels:
+        app: simulator
+    spec:
+      containers:
+        - name: simulator
+          image: delivery-simulator:latest
+          imagePullPolicy: Never
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka-service:29092"
+            - name: SIM_NB_DRIVERS
+              value: "15"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "250m"

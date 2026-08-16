@@ -1,0 +1,13 @@
+delivery_dbt:
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'DELIVERY_ROLE') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'DELIVERY_LAKEHOUSE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'DELIVERY_WH') }}"
+      schema: STAGING
+      threads: 4
+  target: dev
