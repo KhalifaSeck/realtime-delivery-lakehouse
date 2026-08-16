@@ -523,34 +523,6 @@ Spark writes Parquet to both local filesystem (debugging) and ADLS Gen2 (cloud).
 
 ---
 
-## 🚀 Roadmap: Future Enhancements
-
-### Sentinel AI — Agentic DataOps (Planned)
-
-An AI layer on top of the platform, composed of two specialized agents:
-
-**1. Observability Agent** — Reads Great Expectations results, Prometheus metrics, and Grafana alerts. Generates a daily executive summary in natural language:
-
-> *"All pipelines are healthy except a quality test on GPS_EVENTS: 14% of coordinates are outside the Montreal bounding box today (usually < 1%). Likely drift in the simulator parameters."*
-
-**2. Business Analysis Agent** — Queries Snowflake to answer business questions in natural language:
-
-> *"Summarize this week's deliveries"*
-> *"Why did the failure rate increase yesterday?"*
-
-**Planned stack**: LangGraph + Claude Sonnet + MCP (Model Context Protocol) to expose Snowflake, Prometheus, and dbt as MCP tools.
-
-### Additional Enhancements
-
-- **Snowpipe** — Auto-ingest from ADLS to Snowflake (eliminates COPY INTO CronJob)
-- **Power BI Service** — Scheduled refresh via REST API triggered post-pipeline
-- **AKS** — Migrate from Docker Desktop K8s to Azure Kubernetes Service
-- **Helm Charts** — Package all manifests for one-command deployment
-- **CI/CD** — GitHub Actions for automated testing and deployment
-- **Data Contracts** — Schema registry for Kafka topics
-
----
-
 ## Auteur
 
 **Khalifa Ababacar Seck**
